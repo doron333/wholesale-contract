@@ -17,7 +17,30 @@ from a single deal form and exports both as PDFs. The PDF fill/export runs entir
 2. In **Project → Settings → Environment Variables**, add:
    - `ANTHROPIC_API_KEY` = your Anthropic key (required only for smart Autofill)
    - `ANTHROPIC_MODEL` = `claude-haiku-4-5-20251001` (optional; this is the default)
-3. Deploy.
+   - `SIGNWELL_API_KEY` = your SignWell API key (required only for e-signature)
+   - `SIGNWELL_COORD_SCALE` = `1` (optional; only change if signature boxes land off)
+3. Deploy. Environment variables only apply to **new** deployments.
+
+## E-signature
+
+Two separate sends, because the counterparties differ:
+- **Contract → seller** (seller, optional co-seller, then you countersign)
+- **Assignment → cash buyer** (assignee, then you countersign)
+
+Signature and date boxes are placed by measured coordinates from the templates.
+Dates use `lock_sign_date`, so the signing service stamps the real signing date
+rather than a date typed in advance.
+
+**Test mode is on by default.** Test documents are not legally binding and don't
+count toward billing. Send one to yourself, confirm the boxes land on the lines,
+then untick Test mode.
+
+SMS delivery requires an SMS-enabled SignWell workspace. If it isn't enabled the
+send automatically falls back to email and returns the signing links so they can
+be texted manually.
+
+Optional: register `https://<your-domain>/api/signwell-webhook` in SignWell
+(Settings → API → Webhooks, API-type hook) to log signing and completion events.
 
 ## Security
 - The API key is **only** ever stored as a Vercel environment variable and used server-side in

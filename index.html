@@ -121,6 +121,8 @@ footer{text-align:center;padding:24px;color:var(--faint);font-size:10.5px;font-f
    <label class="f"><span>Buyer mailing address</span><input id="buyerAddr"></label>
    <label class="f"><span>Buyer phone</span><input id="buyerPhone" class="mono"></label>
    <label class="f"><span>Buyer email</span><input id="buyerEmail" type="email"></label>
+   <label class="f"><span>Cash buyer email (assignment)</span><input id="assigneeEmail" type="email"></label>
+   <label class="f"><span>Cash buyer phone (assignment)</span><input id="assigneePhone" class="mono"></label>
   </div>
  </section>
 
@@ -133,6 +135,18 @@ footer{text-align:center;padding:24px;color:var(--faint);font-size:10.5px;font-f
   </div>
   <p class="disc">Writes your values onto the exact uploaded templates (buyer block, 30-day inspection, vacant clause, $80,000 assignment basis and $5,000 EMD are already baked in). Review every generated PDF before signing — this fills documents, it isn't legal advice.</p>
  </section>
+ <section class="card">
+  <div class="cardHead"><div class="l"><span class="step">3</span><h2>Send for signature</h2></div>
+   <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--inkSoft);font-weight:600">
+    <input type="checkbox" id="testMode" checked style="width:auto;height:auto"> Test mode
+   </label></div>
+  <div class="btnrow">
+   <button class="dark" id="sendContract">✎ Contract → seller</button>
+   <button class="dark" id="sendAoc">✎ Assignment → cash buyer</button>
+  </div>
+  <p class="hint">Seller signs first, then you countersign. Signature dates are stamped by the signing service on the actual signing date, so they're left blank in the PDF. Test mode sends a real-looking document that is <strong>not legally binding</strong> and costs nothing — leave it on until placement looks right.</p>
+  <div id="sendOut" class="hint" style="white-space:pre-wrap"></div>
+ </section>
  <div class="status" id="status"></div>
 </main>
 <footer>CONTRACTFLOW · FILLS YOUR PURCHASE CONTRACT + ASSIGNMENT · 100% IN-BROWSER, NOTHING UPLOADED</footer>
@@ -144,7 +158,7 @@ const $=id=>document.getElementById(id);
 const H=792;
 
 const DEFAULTS={buyer:"Guardian Property Investments LLC",signer:"Jacob Heino",emd:"5000",inspDays:"30"};
-const IDS=["seller","seller2","buyer","signer","assignee","address","muni","county","agrDate","price","emd","closeDate","title","inspDays","sigDate","phone","email","sellerAddr","buyerAddr","buyerPhone","buyerEmail"];
+const IDS=["seller","seller2","buyer","signer","assignee","address","muni","county","agrDate","price","emd","closeDate","title","inspDays","sigDate","phone","email","sellerAddr","buyerAddr","buyerPhone","buyerEmail","assigneeEmail","assigneePhone"];
 
 function money(v){const n=Number(String(v).replace(/[^0-9.\-]/g,''));return isNaN(n)?'':Math.round(n).toLocaleString('en-US')}
 function fmtDate(s){if(!s)return'';const d=new Date(s+'T12:00:00');return isNaN(d)?'':d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
@@ -161,10 +175,10 @@ function splitPhone(p){
  if(dg.length>=10){const d=dg.slice(-10);return{area:d.slice(0,3),rest:d.slice(3,6)+'-'+d.slice(6)}}
  return{area:'',rest:String(p||'')};
 }
-function values(d){
+function values(d,forSigning){
  const sp=splitPhone(d.phone), bp=splitPhone(d.buyerPhone);
  const buyer=d.buyer||DEFAULTS.buyer;
- const sig=fmtDate(d.sigDate);
+ const sig=forSigning?'':fmtDate(d.sigDate);
  return {
   date:fmtDate(d.agrDate), seller:d.seller, buyer:buyer,
   muni:d.muni, county:d.county, address:d.address,
@@ -263,6 +277,59 @@ function download(bytes,name){const blob=new Blob([bytes],{type:'application/pdf
 async function exportContract(){const d=deal();const v=values(d);const b=await fill(TPL_CONTRACT,MAP_CONTRACT,WHITE_CONTRACT,BLOCKS_CONTRACT,v);download(b,`purchase-contract-${safe(d.address)||'deal'}.pdf`);setStatus('Purchase contract exported.')}
 async function exportAoc(){const d=deal();const v=values(d);const b=await fill(TPL_AOC,MAP_AOC,WHITE_AOC,BLOCKS_AOC,v);download(b,`assignment-${safe(d.address)||'deal'}.pdf`);setStatus('Assignment (AOC) exported.')}
 
+function bytesToB64(bytes){
+ let bin='';const chunk=0x8000;
+ for(let i=0;i<bytes.length;i+=chunk) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+ return btoa(bin);
+}
+async function sendForSignature(kind){
+ const d=deal(), v=values(d,true);
+ const out=$('sendOut'); out.textContent='';
+ const problems=[];
+ if(!d.seller)problems.push('seller name');
+ if(!d.address)problems.push('property address');
+ if(kind==='contract'){
+  if(!d.email&&!d.phone)problems.push('seller email or phone');
+ }else{
+  if(!d.assignee)problems.push('assignee (cash buyer) name');
+  if(!$('assigneeEmail').value.trim()&&!$('assigneePhone').value.trim())problems.push('cash buyer email or phone');
+ }
+ if(!d.buyerEmail&&!d.buyerPhone)problems.push('your (buyer) email or phone to countersign');
+ if(problems.length){out.textContent='Need: '+problems.join(', ');return}
+
+ const bytes = kind==='contract'
+   ? await fill(TPL_CONTRACT,MAP_CONTRACT,WHITE_CONTRACT,BLOCKS_CONTRACT,v)
+   : await fill(TPL_AOC,MAP_AOC,WHITE_AOC,BLOCKS_AOC,v);
+
+ const signers = kind==='contract'
+   ? [ {name:d.seller,email:d.email,phone:d.phone},
+       ...(d.seller2?[{name:d.seller2,email:'',phone:''}]:[]),
+       {name:d.signer||DEFAULTS.signer,email:d.buyerEmail,phone:d.buyerPhone} ]
+   : [ {name:d.assignee,email:$('assigneeEmail').value.trim(),phone:$('assigneePhone').value.trim()},
+       {name:d.signer||DEFAULTS.signer,email:d.buyerEmail,phone:d.buyerPhone} ];
+
+ if(kind==='contract'&&d.seller2&&!signers[1].email&&!signers[1].phone){
+  out.textContent='Second seller needs their own email or phone to sign. Remove them or add contact info.';return;
+ }
+
+ out.textContent='Sending…';
+ try{
+  const r=await fetch('/api/send-for-signature',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({kind,pdfBase64:bytesToB64(bytes),
+    fileName:(kind==='contract'?'purchase-contract':'assignment')+'.pdf',
+    docName:(kind==='contract'?'Purchase Contract — ':'Assignment of Contract — ')+(d.address||''),
+    subject:kind==='contract'?`Contract for ${d.address}`:`Assignment of contract — ${d.address}`,
+    message:kind==='contract'?`Please review and sign the purchase contract for ${d.address}.`:`Please review and sign the assignment for ${d.address}.`,
+    testMode:$('testMode').checked, signers})});
+  const j=await r.json();
+  if(!r.ok){out.textContent='Error: '+(j.error||r.status)+(j.detail?'\n'+JSON.stringify(j.detail).slice(0,400):'');return}
+  let msg=(j.testMode?'TEST MODE — not legally binding\n':'')+'Sent. Document '+j.id+'\n';
+  if(j.smsFellBack)msg+='SMS not enabled on the account — sent by email. Signing links below to text manually.\n';
+  (j.recipients||[]).forEach(x=>{msg+=`• ${x.name} (${x.delivery}) ${x.status||''}${x.signingUrl?'\n  '+x.signingUrl:''}\n`});
+  out.textContent=msg;
+ }catch(e){out.textContent='Error: '+e.message}
+}
+
 const REQ=['seller','address','price','closeDate'];
 function refresh(){
  $('balance').value = deal().balance>0 ? '$'+money(deal().balance) : '';
@@ -311,6 +378,8 @@ $('autofill').onclick=autofill;
 $('clear').onclick=()=>{IDS.forEach(k=>$(k).value=DEFAULTS[k]||'');$('raw').value='';$('agrDate').value=new Date().toISOString().slice(0,10);refresh();setStatus('')};
 $('exContract').onclick=()=>exportContract().catch(e=>setStatus('Error: '+e.message,true));
 $('exAoc').onclick=()=>exportAoc().catch(e=>setStatus('Error: '+e.message,true));
+$('sendContract').onclick=()=>sendForSignature('contract');
+$('sendAoc').onclick=()=>sendForSignature('assignment');
 $('exBoth').onclick=async()=>{try{await exportContract();await exportAoc();setStatus('Both PDFs exported.')}catch(e){setStatus('Error: '+e.message,true)}};
 refresh();
 </script>
