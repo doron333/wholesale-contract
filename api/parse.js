@@ -10,6 +10,7 @@ const SYSTEM = `You extract structured fields from messy real-estate wholesale d
 Return ONLY a JSON object (no prose, no markdown fences) with exactly these keys:
 {
   "seller": "",       // seller / homeowner full name
+  "seller2": "",      // second seller / co-owner ("" if only one)
   "buyer": "",        // buyer entity (leave "" unless clearly stated)
   "signer": "",       // buyer signer person (leave "" unless stated)
   "assignee": "",     // end cash buyer for the assignment (leave "" if not mentioned)
@@ -21,8 +22,13 @@ Return ONLY a JSON object (no prose, no markdown fences) with exactly these keys
   "price": "",        // purchase price, digits only, no $ or commas
   "emd": "",          // earnest money / deposit, digits only, no $ or commas
   "title": "",        // title / escrow company
+  "inspDays": "",     // inspection period in business days ("" if not stated)
   "phone": "",        // seller phone
-  "email": ""         // seller email
+  "email": "",        // seller email
+  "sellerAddr": "",   // seller mailing address for notices
+  "buyerAddr": "",    // buyer mailing address for notices
+  "buyerPhone": "",   // buyer phone
+  "buyerEmail": ""    // buyer email
 }
 Rules: use "" for anything not present. Never invent values. Interpret "285k" as 285000.
 Dates must be ISO YYYY-MM-DD; if only a month/day with no year is given, assume the current year.`;

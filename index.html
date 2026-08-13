@@ -91,6 +91,7 @@ footer{text-align:center;padding:24px;color:var(--faint);font-size:10.5px;font-f
    <label class="f"><span>Buyer entity (Assignor)</span><input id="buyer"></label>
    <label class="f"><span>Buyer signer</span><input id="signer"></label>
    <label class="f"><span>Assignee (cash buyer — AOC)</span><input id="assignee"></label>
+   <label class="f"><span>Second seller (optional)</span><input id="seller2"></label>
   </div>
 
   <div class="seclabel">Property</div>
@@ -108,12 +109,18 @@ footer{text-align:center;padding:24px;color:var(--faint);font-size:10.5px;font-f
    <label class="f"><span>Closing date</span><input id="closeDate" type="date"></label>
    <label class="f"><span>Title / escrow company</span><input id="title"></label>
    <label class="f"><span>Balance at closing</span><input id="balance" class="mono" readonly></label>
+   <label class="f"><span>Inspection period (business days)</span><input id="inspDays" class="mono"></label>
+   <label class="f"><span>Signature date (optional)</span><input id="sigDate" type="date"></label>
   </div>
 
-  <div class="seclabel">Seller contact (optional — fills notices page)</div>
+  <div class="seclabel">Notices (optional — fills the notices page)</div>
   <div class="fields two">
    <label class="f"><span>Seller phone</span><input id="phone" class="mono"></label>
    <label class="f"><span>Seller email</span><input id="email" type="email"></label>
+   <label class="f"><span>Seller mailing address</span><input id="sellerAddr"></label>
+   <label class="f"><span>Buyer mailing address</span><input id="buyerAddr"></label>
+   <label class="f"><span>Buyer phone</span><input id="buyerPhone" class="mono"></label>
+   <label class="f"><span>Buyer email</span><input id="buyerEmail" type="email"></label>
   </div>
  </section>
 
@@ -136,8 +143,8 @@ const TPL_AOC="JVBERi0xLjQKJdPr6eEKMSAwIG9iago8PC9UaXRsZSAoQmxhbmsgQU9DLmRvY3gpC
 const $=id=>document.getElementById(id);
 const H=792;
 
-const DEFAULTS={buyer:"Guardian Property Investments LLC",signer:"Jacob Heino",emd:"5000"};
-const IDS=["seller","buyer","signer","assignee","address","muni","county","agrDate","price","emd","closeDate","title","phone","email"];
+const DEFAULTS={buyer:"Guardian Property Investments LLC",signer:"Jacob Heino",emd:"5000",inspDays:"30"};
+const IDS=["seller","seller2","buyer","signer","assignee","address","muni","county","agrDate","price","emd","closeDate","title","inspDays","sigDate","phone","email","sellerAddr","buyerAddr","buyerPhone","buyerEmail"];
 
 function money(v){const n=Number(String(v).replace(/[^0-9.\-]/g,''));return isNaN(n)?'':Math.round(n).toLocaleString('en-US')}
 function fmtDate(s){if(!s)return'';const d=new Date(s+'T12:00:00');return isNaN(d)?'':d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
@@ -149,64 +156,112 @@ function deal(){
  d.balance=(Number(String(d.price).replace(/[^0-9.]/g,''))||0)-(Number(String(d.emd).replace(/[^0-9.]/g,''))||0);
  return d;
 }
+function splitPhone(p){
+ const dg=String(p||'').replace(/\D/g,'');
+ if(dg.length>=10){const d=dg.slice(-10);return{area:d.slice(0,3),rest:d.slice(3,6)+'-'+d.slice(6)}}
+ return{area:'',rest:String(p||'')};
+}
 function values(d){
+ const sp=splitPhone(d.phone), bp=splitPhone(d.buyerPhone);
+ const buyer=d.buyer||DEFAULTS.buyer;
+ const sig=fmtDate(d.sigDate);
  return {
-  date:fmtDate(d.agrDate), seller:d.seller, buyer:d.buyer||DEFAULTS.buyer,
+  date:fmtDate(d.agrDate), seller:d.seller, buyer:buyer,
   muni:d.muni, county:d.county, address:d.address,
-  price:d.price?'$'+money(d.price):'', emd:d.emd?'$'+money(d.emd):'',
-  balance:d.balance>0?'$'+money(d.balance):'',
-  close:fmtDate(d.closeDate), title:d.title, phone:d.phone, email:d.email,
-  assignor:d.buyer||DEFAULTS.buyer, assignee:d.assignee, escrow:d.title,
+  price:d.price?money(d.price):'', emd:d.emd?money(d.emd):'',
+  balance:d.balance>0?money(d.balance):'',
+  close:fmtDate(d.closeDate), title:d.title,
+  inspDays:d.inspDays,
+  sellerPhoneArea:sp.area, sellerPhoneRest:sp.rest,
+  buyerPhoneArea:bp.area, buyerPhoneRest:bp.rest,
+  email:d.email, buyerEmail:d.buyerEmail,
+  sellerAddr:d.sellerAddr, buyerAddr:d.buyerAddr,
+  sellerSig:d.seller, sellerBy:d.seller, sellerDate:sig,
+  seller2Sig:d.seller2, seller2By:d.seller2, seller2Date:d.seller2?sig:'',
+  buyerSig:buyer, buyerDate:sig,
+  assignor:buyer, assignee:d.assignee, escrow:d.title,
  };
 }
+function introText(v){
+ return `This agreement is made this ${v.date||'____________'}, by and between ${v.seller||'____________'}, hereafter called Seller(s), and ${v.buyer}, hereafter called Buyer(s).`;
+}
 
-// field maps: {p:pageIndex, x, top, w:blankWidth, size, key}
+// field maps: base = distance from page top to the line's true typographic baseline
 const MAP_CONTRACT=[
- {p:0,x:319,top:135.3,w:120,size:9,key:'date'},
- {p:0,x:392,top:132.6,w:118,size:9,key:'seller'},
- {p:0,x:198,top:158.8,w:126,size:8,key:'buyer'},
- {p:0,x:184,top:266.6,w:76,size:9,key:'muni'},
- {p:0,x:161,top:293.6,w:47,size:9,key:'county'},
- {p:0,x:296,top:347.6,w:238,size:9,key:'address'},
- {p:0,x:437,top:425.0,w:70,size:9,key:'price'},
- {p:0,x:437,top:462.5,w:70,size:9,key:'emd'},
- {p:0,x:181,top:526.3,w:70,size:9,key:'balance'},
- {p:0,x:380,top:616.0,w:142,size:9,key:'close'},
- {p:0,x:164,top:655.3,w:186,size:9,key:'title'},
- {p:3,x:134,top:590.4,w:148,size:8,key:'phone'},
- {p:3,x:107,top:624.5,w:176,size:8,key:'email'},
+ {p:0,x:184,base:275.26,w:76,size:9,key:'muni'},
+ {p:0,x:161,base:302.29,w:47,size:9,key:'county'},
+ {p:0,x:296,base:356.29,w:238,size:9,key:'address'},
+ {p:0,x:436,base:433.69,w:70,size:9,key:'price'},
+ {p:0,x:436,base:471.19,w:70,size:9,key:'emd'},
+ {p:0,x:181,base:534.99,w:70,size:9,key:'balance'},
+ {p:0,x:380,base:624.69,w:142,size:9,key:'close'},
+ {p:0,x:164,base:663.99,w:186,size:9,key:'title'},
+ {p:1,x:214,base:386.49,w:66,size:9,key:'inspDays'},
+ {p:3,x:74,base:585.29,w:205,size:8,key:'sellerAddr'},
+ {p:3,x:288,base:585.29,w:210,size:8,key:'buyerAddr'},
+ {p:3,x:137,base:599.09,w:24,size:8,key:'sellerPhoneArea'},
+ {p:3,x:170,base:599.09,w:110,size:8,key:'sellerPhoneRest'},
+ {p:3,x:349,base:599.09,w:24,size:8,key:'buyerPhoneArea'},
+ {p:3,x:382,base:599.09,w:115,size:8,key:'buyerPhoneRest'},
+ {p:3,x:107,base:633.19,w:174,size:8,key:'email'},
+ {p:3,x:321,base:633.19,w:97,size:8,key:'buyerEmail'},
+ {p:5,x:112,base:173.59,w:250,size:9,key:'sellerSig'},
+ {p:5,x:94,base:201.59,w:200,size:9,key:'sellerBy'},
+ {p:5,x:104,base:215.29,w:120,size:9,key:'sellerDate'},
+ {p:5,x:112,base:262.89,w:250,size:9,key:'seller2Sig'},
+ {p:5,x:94,base:290.79,w:200,size:9,key:'seller2By'},
+ {p:5,x:104,base:304.59,w:120,size:9,key:'seller2Date'},
+ {p:5,x:114,base:359.49,w:250,size:9,key:'buyerSig'},
+ {p:5,x:301,base:414.79,w:120,size:9,key:'buyerDate'},
 ];
-const WHITE_CONTRACT=[[317.9,135.3,388.4,144.3],[390.9,132.6,457.0,141.6],[293.8,347.6,337.7,358.6]];
+// [x0, top, x1, bottom, onlyIfKey]
+const WHITE_CONTRACT=[[70,128,515,172],[290.5,347.0,338.5,360.0,'address']];
+// wrapped paragraph rewritten over the whited-out intro block
+const BLOCKS_CONTRACT=[{p:0,x:72,base:153.99,w:468,size:11,lead:13.5,text:introText}];
 const MAP_AOC=[
- {p:0,x:217,top:87.1,w:92,size:9,key:'assignor'},
- {p:0,x:457,top:87.1,w:84,size:8,key:'assignee'},
- {p:0,x:456,top:99.1,w:150,size:8,key:'address'},
- {p:0,x:325,top:144.5,w:78,size:9,key:'close'},
- {p:0,x:47,top:301.7,w:60,size:8,key:'escrow'},
- {p:0,x:47,top:323.7,w:65,size:8,key:'escrow'},
- {p:0,x:268,top:356.7,w:75,size:8,key:'escrow'},
- {p:0,x:303,top:404.5,w:65,size:8,key:'escrow'},
+ {p:0,x:217,base:95.0,w:92,size:9,key:'assignor'},
+ {p:0,x:457,base:95.0,w:84,size:8,key:'assignee'},
+ {p:0,x:456,base:107.0,w:150,size:8,key:'address'},
+ {p:0,x:325,base:152.4,w:78,size:9,key:'close'},
+ {p:0,x:47,base:309.6,w:60,size:8,key:'escrow'},
+ {p:0,x:47,base:331.6,w:65,size:8,key:'escrow'},
+ {p:0,x:268,base:364.6,w:75,size:8,key:'escrow'},
+ {p:0,x:303,base:412.4,w:65,size:8,key:'escrow'},
 ];
-const WHITE_AOC=[[454,92,602,103]];
+const WHITE_AOC=[[454,97,603,111,'address']];
+const BLOCKS_AOC=[];
 
-async function fill(b64,map,whites,vals){
+async function fill(b64,map,whites,blocks,vals){
  const {PDFDocument,StandardFonts,rgb}=PDFLib;
  const pdf=await PDFDocument.load(b64bytes(b64));
  const font=await pdf.embedFont(StandardFonts.Helvetica);
  const pages=pdf.getPages();
- whites.forEach(([x0,t0,x1,b1])=>{const pg=pages[0];pg.drawRectangle({x:x0-1,y:H-b1-1,width:(x1-x0)+2,height:(b1-t0)+2,color:rgb(1,1,1)})});
+ whites.forEach(([x0,t0,x1,b1,key])=>{
+  if(key && !vals[key]) return;
+  pages[0].drawRectangle({x:x0-1,y:H-b1-1,width:(x1-x0)+2,height:(b1-t0)+2,color:rgb(1,1,1)});
+ });
+ (blocks||[]).forEach(b=>{
+  const txt=typeof b.text==='function'?b.text(vals):b.text; if(!txt)return;
+  const words=String(txt).split(/\s+/); let line='', base=b.base;
+  const put=s=>pages[b.p].drawText(s,{x:b.x,y:H-base,size:b.size,font,color:rgb(0,0,0)});
+  words.forEach(w=>{
+   const t=line?line+' '+w:w;
+   if(font.widthOfTextAtSize(t,b.size)>b.w && line){put(line);line=w;base+=b.lead}else line=t;
+  });
+  if(line)put(line);
+ });
  map.forEach(m=>{
   const txt=vals[m.key];if(!txt)return;
   let size=m.size;
   while(size>5.5 && font.widthOfTextAtSize(String(txt),size)>m.w) size-=0.5;
-  pages[m.p].drawText(String(txt),{x:m.x,y:H-m.top-size*0.92,size,font,color:rgb(0,0,0)});
+  pages[m.p].drawText(String(txt),{x:m.x,y:H-m.base,size,font,color:rgb(0,0,0)});
  });
  return await pdf.save();
 }
 function download(bytes,name){const blob=new Blob([bytes],{type:'application/pdf'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 
-async function exportContract(){const d=deal();const v=values(d);const b=await fill(TPL_CONTRACT,MAP_CONTRACT,WHITE_CONTRACT,v);download(b,`purchase-contract-${safe(d.address)||'deal'}.pdf`);setStatus('Purchase contract exported.')}
-async function exportAoc(){const d=deal();const v=values(d);const b=await fill(TPL_AOC,MAP_AOC,WHITE_AOC,v);download(b,`assignment-${safe(d.address)||'deal'}.pdf`);setStatus('Assignment (AOC) exported.')}
+async function exportContract(){const d=deal();const v=values(d);const b=await fill(TPL_CONTRACT,MAP_CONTRACT,WHITE_CONTRACT,BLOCKS_CONTRACT,v);download(b,`purchase-contract-${safe(d.address)||'deal'}.pdf`);setStatus('Purchase contract exported.')}
+async function exportAoc(){const d=deal();const v=values(d);const b=await fill(TPL_AOC,MAP_AOC,WHITE_AOC,BLOCKS_AOC,v);download(b,`assignment-${safe(d.address)||'deal'}.pdf`);setStatus('Assignment (AOC) exported.')}
 
 const REQ=['seller','address','price','closeDate'];
 function refresh(){
@@ -220,7 +275,8 @@ function setStatus(msg,err){const s=$('status');s.textContent=msg;s.className='s
 function applyAI(j){
  const set=(id,v)=>{if(v!==undefined&&v!==null&&String(v).trim()!=='')$(id).value=String(v).trim()};
  set('seller',j.seller);set('buyer',j.buyer);set('signer',j.signer);set('assignee',j.assignee);
- set('address',j.address);set('muni',j.muni);set('county',j.county);
+ set('address',j.address);set('muni',j.muni);set('county',j.county);set('seller2',j.seller2);
+ set('sellerAddr',j.sellerAddr);set('buyerAddr',j.buyerAddr);set('buyerPhone',j.buyerPhone);set('buyerEmail',j.buyerEmail);
  set('agrDate',j.agrDate);set('closeDate',j.closeDate);set('title',j.title);set('phone',j.phone);set('email',j.email);
  if(j.price!=null&&String(j.price).trim()!=='')$('price').value=String(j.price).replace(/[^0-9.]/g,'');
  if(j.emd!=null&&String(j.emd).trim()!=='')$('emd').value=String(j.emd).replace(/[^0-9.]/g,'');
